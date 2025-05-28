@@ -1,0 +1,20 @@
+services:
+  openhands-cli:
+    image: docker.all-hands.dev/all-hands-ai/openhands:${CONTAINER_VERSION}
+    container_name: openhands-cli
+    stdin_open: true  # Keep STDIN open
+    tty: true         # Allocate a pseudo-TTY
+    restart: "no"     # Do not restart automatically
+    # コンテナが終了したら自動的に削除
+    init: true        # Use init process to handle signals properly
+    environment:
+      - SANDBOX_RUNTIME_CONTAINER_IMAGE=docker.all-hands.dev/all-hands-ai/runtime:${CONTAINER_VERSION}-nikolaik
+      - SANDBOX_USER_ID=${SANDBOX_USER_ID:-1000}  # Default to 1000 if not set
+      - SANDBOX_VOLUMES=${SANDBOX_VOLUMES}:/workspace:rw
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_MODEL=${LLM_MODEL}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./.openhands-state:/.openhands-state
+      # - ./config.toml:/app/config.toml
+    command: python -m openhands.cli.main
