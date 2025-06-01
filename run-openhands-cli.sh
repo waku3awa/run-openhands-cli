@@ -14,9 +14,159 @@ fi
 
 # Set default values
 DEFAULT_WORKSPACE="$(pwd)"
-DEFAULT_MODEL="anthropic/claude-sonnet-4-20250514"
-# DEFAULT_MODEL="gemini/gemini-2.5-pro-exp-03-25"
 DEFAULT_CONTAINER_VERSION="0.39"
+MODELS_CONFIG_FILE="./models.conf"
+
+# Function to load models from config file
+load_models() {
+    if [ ! -f "$MODELS_CONFIG_FILE" ]; then
+        echo "Error: Models configuration file '$MODELS_CONFIG_FILE' not found."
+        exit 1
+    fi
+    
+    # Read models from config file (skip comments and empty lines)
+    models=()
+    display_names=()
+    base_urls=()
+    descriptions=()
+    
+    while IFS='|' read -r model_name display_name base_url description; do
+        # Skip comments and empty lines
+        if [[ "$model_name" =~ ^#.*$ ]] || [[ -z "$model_name" ]]; then
+            continue
+        fi
+        models+=("$model_name")
+        display_names+=("$display_name")
+        base_urls+=("$base_url")
+        descriptions+=("$description")
+    done < "$MODELS_CONFIG_FILE"
+}
+
+# Function to display model list with cursor selection
+display_models() {
+    local selected_index=$1
+    
+    # Clear screen and move cursor to top
+    printf "\033[2J\033[H"
+    
+    echo "Available LLM models:"
+    echo "====================="
+    echo "Use ↑/↓ arrow keys (or j/k) to navigate, 1-9 for quick select, Enter to confirm, Esc to exit"
+    echo ""
+    
+    for i in "${!models[@]}"; do
+        # Build the display line with model name, description, and base URL
+        local display_line="%d) %s"
+        local line_args=($((i+1)) "${display_names[i]}")
+        
+        if [ -n "${descriptions[i]}" ]; then
+            display_line="$display_line - %s"
+            line_args+=("${descriptions[i]}")
+        fi
+        
+        if [ -n "${base_urls[i]}" ]; then
+            display_line="$display_line [%s]"
+            line_args+=("${base_urls[i]}")
+        fi
+        
+        if [ $i -eq $selected_index ]; then
+            # Highlight selected item with background color and arrow
+            printf "\033[7m> $display_line\033[0m\n" "${line_args[@]}"
+        else
+            printf "  $display_line\n" "${line_args[@]}"
+        fi
+    done
+}
+
+# Function to select model with cursor navigation
+select_model() {
+    load_models
+    
+    if [ ${#models[@]} -eq 0 ]; then
+        echo "Error: No models found in configuration file."
+        exit 1
+    fi
+    
+    local selected_index=0
+    local key
+    
+    # Hide cursor
+    printf "\033[?25l"
+    
+    # Display initial list
+    display_models $selected_index
+    
+    while true; do
+        # Read a single character
+        read -rsn1 key
+        
+        # Handle escape sequences (arrow keys) and escape key
+        if [[ $key == $'\x1b' ]]; then
+            # Read next characters to determine if it's an arrow key or just escape
+            read -rsn1 -t 0.1 next_key
+            if [[ $next_key == '[' ]]; then
+                read -rsn1 arrow_key
+                case $arrow_key in
+                    'A') # Up arrow
+                        if [ $selected_index -gt 0 ]; then
+                            selected_index=$((selected_index - 1))
+                            display_models $selected_index
+                        fi
+                        ;;
+                    'B') # Down arrow
+                        if [ $selected_index -lt $((${#models[@]} - 1)) ]; then
+                            selected_index=$((selected_index + 1))
+                            display_models $selected_index
+                        fi
+                        ;;
+                esac
+            else
+                # Pure escape key pressed
+                printf "\033[?25h" # Show cursor
+                printf "\033[2J\033[H" # Clear screen
+                echo "Selection cancelled."
+                exit 0
+            fi
+        elif [[ $key == $'\n' ]] || [[ $key == $'\r' ]] || [[ $key == '' ]]; then
+            # Enter key pressed
+            break
+        elif [[ $key == 'j' ]] || [[ $key == 'J' ]]; then
+            # j key (vim-style down)
+            if [ $selected_index -lt $((${#models[@]} - 1)) ]; then
+                selected_index=$((selected_index + 1))
+                display_models $selected_index
+            fi
+        elif [[ $key == 'k' ]] || [[ $key == 'K' ]]; then
+            # k key (vim-style up)
+            if [ $selected_index -gt 0 ]; then
+                selected_index=$((selected_index - 1))
+                display_models $selected_index
+            fi
+        elif [[ $key =~ ^[0-9]$ ]]; then
+            # Number key pressed - jump to that index (1-based)
+            local num_selection=$((key - 1))
+            if [ $num_selection -ge 0 ] && [ $num_selection -lt ${#models[@]} ]; then
+                selected_index=$num_selection
+                display_models $selected_index
+            fi
+        fi
+    done
+    
+    # Show cursor again
+    printf "\033[?25h"
+    
+    # Set selected model
+    export LLM_MODEL="${models[selected_index]}"
+    export LLM_BASE_URL="${base_urls[selected_index]}"
+    
+    # Clear screen and show final selection
+    printf "\033[2J\033[H"
+    echo "Selected model: ${display_names[selected_index]}"
+    if [ -n "$LLM_BASE_URL" ]; then
+        echo "Base URL: $LLM_BASE_URL"
+    fi
+    echo ""
+}
 
 # Prompt for environment variables if not set
 if [ -z "$SANDBOX_VOLUMES" ]; then
@@ -26,18 +176,23 @@ if [ -z "$SANDBOX_VOLUMES" ]; then
 fi
 
 if [ -z "$LLM_MODEL" ]; then
-    read -p "Enter the LLM model to use [default: $DEFAULT_MODEL]: " LLM_MODEL
-    LLM_MODEL=${LLM_MODEL:-$DEFAULT_MODEL}
-    export LLM_MODEL
+    select_model
 fi
 
+# Handle API key based on model type
 if [ -z "$LLM_API_KEY" ]; then
-    read -p "Enter your LLM API key: " LLM_API_KEY
-    if [ -z "$LLM_API_KEY" ]; then
-        echo "API key is required. Exiting."
-        exit 1
+    # Check if this is a local LLM (has base_url set)
+    if [ -n "$LLM_BASE_URL" ]; then
+        echo "Local LLM detected. Using dummy API key."
+        export LLM_API_KEY="dummy"
+    else
+        read -p "Enter your LLM API key: " LLM_API_KEY
+        if [ -z "$LLM_API_KEY" ]; then
+            echo "API key is required. Exiting."
+            exit 1
+        fi
+        export LLM_API_KEY
     fi
-    export LLM_API_KEY
 fi
 
 if [ -z "$CONTAINER_VERSION" ]; then
@@ -86,6 +241,9 @@ fi
 echo "Starting OpenHands CLI mode with the following configuration:"
 echo "Workspace: $SANDBOX_VOLUMES"
 echo "LLM Model: $LLM_MODEL"
+if [ -n "$LLM_BASE_URL" ]; then
+    echo "LLM Base URL: $LLM_BASE_URL"
+fi
 echo "User ID: $SANDBOX_USER_ID"
 
 # クリーンアップ関数を定義
