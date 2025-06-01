@@ -1,0 +1,1 @@
+docker build ./ -t docker.all-hands.dev/all-hands-ai/runtime:0.39.1-nikolaik

@@ -1,0 +1,2 @@
+[sandbox]  
+runtime_startup_env_vars = { DISPLAY = :0 }
