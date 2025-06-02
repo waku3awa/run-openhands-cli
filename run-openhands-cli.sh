@@ -1,5 +1,7 @@
 #!/bin/bash
 
+cd "$(dirname "$0")"
+
 # Check if Docker is installed
 if ! command -v docker &> /dev/null; then
     echo "Docker is not installed. Please install Docker first."
@@ -16,6 +18,23 @@ fi
 DEFAULT_WORKSPACE="$(pwd)"
 DEFAULT_CONTAINER_VERSION="0.39"
 MODELS_CONFIG_FILE="./models.conf"
+ENV_FILE="./.env"
+
+# Function to load environment variables from .env file
+load_env_file() {
+    if [ -f "$ENV_FILE" ]; then
+        echo "Loading environment variables from $ENV_FILE"
+        # Export variables from .env file, ignoring comments and empty lines
+        while IFS= read -r line; do
+            # Skip comments and empty lines
+            if [[ "$line" =~ ^#.*$ ]] || [[ -z "$line" ]]; then
+                continue
+            fi
+            # Export the variable
+            export "$line"
+        done < "$ENV_FILE"
+    fi
+}
 
 # Function to load models from config file
 load_models() {
@@ -28,9 +47,10 @@ load_models() {
     models=()
     display_names=()
     base_urls=()
+    api_key_envs=()
     descriptions=()
     
-    while IFS='|' read -r model_name display_name base_url description; do
+    while IFS='|' read -r model_name display_name base_url api_key_env description; do
         # Skip comments and empty lines
         if [[ "$model_name" =~ ^#.*$ ]] || [[ -z "$model_name" ]]; then
             continue
@@ -38,6 +58,7 @@ load_models() {
         models+=("$model_name")
         display_names+=("$display_name")
         base_urls+=("$base_url")
+        api_key_envs+=("$api_key_env")
         descriptions+=("$description")
     done < "$MODELS_CONFIG_FILE"
 }
@@ -158,6 +179,7 @@ select_model() {
     # Set selected model
     export LLM_MODEL="${models[selected_index]}"
     export LLM_BASE_URL="${base_urls[selected_index]}"
+    export SELECTED_API_KEY_ENV="${api_key_envs[selected_index]}"
     
     # Clear screen and show final selection
     printf "\033[2J\033[H"
@@ -165,8 +187,14 @@ select_model() {
     if [ -n "$LLM_BASE_URL" ]; then
         echo "Base URL: $LLM_BASE_URL"
     fi
+    if [ -n "$SELECTED_API_KEY_ENV" ]; then
+        echo "API Key Environment Variable: $SELECTED_API_KEY_ENV"
+    fi
     echo ""
 }
+
+# Load environment variables from .env file
+load_env_file
 
 # Prompt for environment variables if not set
 if [ -z "$SANDBOX_VOLUMES" ]; then
@@ -179,19 +207,48 @@ if [ -z "$LLM_MODEL" ]; then
     select_model
 fi
 
+# Function to check if URL is local
+is_local_url() {
+    local url="$1"
+    if [[ "$url" =~ ^https?://(localhost|127\.0\.0\.1|host\.docker\.internal|0\.0\.0\.0)(:[0-9]+)?(/.*)?$ ]]; then
+        return 0  # true - is local
+    else
+        return 1  # false - is not local
+    fi
+}
+
 # Handle API key based on model type
 if [ -z "$LLM_API_KEY" ]; then
-    # Check if this is a local LLM (has base_url set)
-    if [ -n "$LLM_BASE_URL" ]; then
+    # Check if this is a local LLM (has local base_url set)
+    if [ -n "$LLM_BASE_URL" ] && is_local_url "$LLM_BASE_URL"; then
         echo "Local LLM detected. Using dummy API key."
         export LLM_API_KEY="dummy"
     else
-        read -p "Enter your LLM API key: " LLM_API_KEY
-        if [ -z "$LLM_API_KEY" ]; then
-            echo "API key is required. Exiting."
-            exit 1
+        # Try to get API key from environment variable specified in model config
+        if [ -n "$SELECTED_API_KEY_ENV" ]; then
+            # Use indirect variable expansion to get the value of the environment variable
+            api_key_value="${!SELECTED_API_KEY_ENV}"
+            if [ -n "$api_key_value" ]; then
+                echo "Using API key from environment variable: $SELECTED_API_KEY_ENV"
+                export LLM_API_KEY="$api_key_value"
+            else
+                echo "Environment variable $SELECTED_API_KEY_ENV is not set or empty."
+                read -p "Enter your LLM API key: " LLM_API_KEY
+                if [ -z "$LLM_API_KEY" ]; then
+                    echo "API key is required. Exiting."
+                    exit 1
+                fi
+                export LLM_API_KEY
+            fi
+        else
+            # No API key environment variable specified, ask user for input
+            read -p "Enter your LLM API key: " LLM_API_KEY
+            if [ -z "$LLM_API_KEY" ]; then
+                echo "API key is required. Exiting."
+                exit 1
+            fi
+            export LLM_API_KEY
         fi
-        export LLM_API_KEY
     fi
 fi
 

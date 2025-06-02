@@ -18,6 +18,27 @@ This repository contains a Docker Compose configuration for running OpenHands in
 
 ## Setup
 
+### API Key Configuration (Optional)
+
+To avoid entering API keys every time, you can create a `.env` file to store your API keys:
+
+1. Copy the example file:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Edit `.env` and add your API keys:
+   ```bash
+   # Uncomment and set the API keys you need
+   ANTHROPIC_API_KEY=your_anthropic_api_key_here
+   GOOGLE_API_KEY=your_google_api_key_here
+   OPENAI_API_KEY=your_openai_api_key_here
+   KLUSTER_API_KEY=your_kluster_api_key_here
+   OPENROUTER_API_KEY=your_openrouter_api_key_here
+   ```
+
+3. The script will automatically use the appropriate API key based on the selected model.
+
 ### Using Helper Scripts (Recommended)
 
 #### Linux/macOS
@@ -32,19 +53,23 @@ This repository contains a Docker Compose configuration for running OpenHands in
 
 The script will guide you through the following configuration steps:
 
-1. **Workspace Directory Selection**
+1. **Environment Variables Loading**
+   - Automatically loads API keys from `.env` file if present
+
+2. **Workspace Directory Selection**
    - Specify the directory OpenHands should access
    - Default: current directory
 
-2. **LLM Model Selection**
+3. **LLM Model Selection**
    - Choose from models defined in `models.conf`
    - Supports both cloud and local LLMs
 
-3. **API Key Input**
-   - Cloud LLMs: Enter your actual API key
+4. **API Key Input**
+   - If API key is found in `.env`: Uses it automatically
+   - If not found: Prompts for manual input
    - Local LLMs: Automatically sets "dummy" key
 
-4. **Container Version Selection**
+5. **Container Version Selection**
    - Default: 0.39
 
 These scripts will prompt you for the necessary configuration if environment variables are not already set.
@@ -100,12 +125,13 @@ docker compose up
 The `models.conf` file defines available LLM models in the following format:
 
 ```
-MODEL_NAME|DISPLAY_NAME|BASE_URL|DESCRIPTION
+MODEL_NAME|DISPLAY_NAME|BASE_URL|API_KEY_ENV|DESCRIPTION
 ```
 
 - `MODEL_NAME`: Model name used by OpenHands
 - `DISPLAY_NAME`: Name displayed in the selection menu
 - `BASE_URL`: Base URL for OpenAI API-compatible local LLMs (empty for standard APIs)
+- `API_KEY_ENV`: Environment variable name for the API key (empty for manual input or local LLMs)
 - `DESCRIPTION`: Model description
 
 ### Adding New Models
@@ -113,11 +139,14 @@ MODEL_NAME|DISPLAY_NAME|BASE_URL|DESCRIPTION
 Edit the `models.conf` file to add new models:
 
 ```bash
-# Cloud LLM
-openai/gpt-4-turbo|GPT-4 Turbo||OpenAI GPT-4 Turbo
+# Cloud LLM with API key from environment
+openai/gpt-4-turbo|GPT-4 Turbo||OPENAI_API_KEY|OpenAI GPT-4 Turbo
 
-# Local LLM
-openai/my-local-model|My Local Model|http://localhost:8000|Custom local model
+# Cloud LLM with manual API key input
+custom/model|Custom Model|||Custom model requiring manual API key
+
+# Local LLM (no API key needed)
+openai/my-local-model|My Local Model|http://localhost:8000||Custom local model
 ```
 
 ## Local LLM Setup
