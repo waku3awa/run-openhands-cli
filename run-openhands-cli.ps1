@@ -21,7 +21,7 @@ catch {
 # Set default values
 $DEFAULT_WORKSPACE = (Get-Location).Path -replace '\\', '/'  # Convert to Docker-compatible path format
 $DEFAULT_MODEL = "anthropic/claude-sonnet-4-20250514"
-$DEFAULT_CONTAINER_VERSION = "0.39"
+$DEFAULT_CONTAINER_VERSION = "0.40"
 
 # Prompt for environment variables if not set
 if (-not $env:SANDBOX_VOLUMES) {

@@ -203,6 +203,9 @@ if [ -z "$SANDBOX_VOLUMES" ]; then
     export SANDBOX_VOLUMES
 fi
 
+# Set WORKSPACE_DIR to the same value as SANDBOX_VOLUMES for use in compose.yaml
+export WORKSPACE_DIR="$SANDBOX_VOLUMES"
+
 if [ -z "$LLM_MODEL" ]; then
     select_model
 fi

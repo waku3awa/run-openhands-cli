@@ -1,204 +1,144 @@
-# OpenHands CLI Mode with Docker Compose
+# OpenHands CLI with Post-Command Script
 
-This repository contains a Docker Compose configuration for running OpenHands in CLI mode with enhanced model selection and local LLM support.
+このプロジェクトは、OpenHands CLIの実行後に自動的にランタイムコンテナの情報を表示し、ユーザー入力待ちに入る機能を追加したものです。
 
-## File Structure
+## ファイル構成
 
-- `compose.yaml` - Docker Compose configuration file
-- `run-openhands-cli.sh` - Startup script with interactive model selection
-- `models.conf` - Available LLM models configuration
-- `config.toml` - OpenHands configuration file
-- `local_llm_setting.md` - Detailed local LLM setup instructions
+- `compose.yaml`: Docker Composeの設定ファイル
+- `post-command.sh`: OpenHands CLI実行後に実行されるスクリプト
+- `config.toml`: OpenHandsの設定ファイル（別途作成が必要）
 
-## Prerequisites
+## 機能
 
-- Docker and Docker Compose installed on your system
-- An API key for your chosen LLM provider (not required for local LLMs)
-- Docker socket accessible to the user running the compose command
+1. **OpenHands CLI実行**: 通常のOpenHands CLIが実行されます
+2. **コンテナ情報表示**: 実行後に`openhands-runtime-${WORKSPACE_DIR}`コンテナの情報を検索・表示します
+3. **コンテナ削除確認**: コンテナが見つかった場合、削除するかユーザーに確認します
+4. **自動クリーンアップ**: コンテナ削除時に関連するセッションディレクトリも自動削除します
+5. **柔軟なWORKSPACE_DIR指定**: 環境変数または引数でWORKSPACE_DIRを指定可能
 
-## Setup
+## 使用方法
 
-### API Key Configuration (Optional)
+### 1. 環境変数の設定
 
-To avoid entering API keys every time, you can create a `.env` file to store your API keys:
+以下の環境変数を設定してください：
 
-1. Copy the example file:
-   ```bash
-   cp .env.example .env
-   ```
-
-2. Edit `.env` and add your API keys:
-   ```bash
-   # Uncomment and set the API keys you need
-   ANTHROPIC_API_KEY=your_anthropic_api_key_here
-   GOOGLE_API_KEY=your_google_api_key_here
-   OPENAI_API_KEY=your_openai_api_key_here
-   KLUSTER_API_KEY=your_kluster_api_key_here
-   OPENROUTER_API_KEY=your_openrouter_api_key_here
-   ```
-
-3. The script will automatically use the appropriate API key based on the selected model.
-
-### Using Helper Scripts (Recommended)
-
-#### Linux/macOS
 ```bash
-./run-openhands-cli.sh
-```
-
-#### [This does not work. Use WSL2] Windows (PowerShell)
-```powershell
-.\run-openhands-cli.ps1
-```
-
-The script will guide you through the following configuration steps:
-
-1. **Environment Variables Loading**
-   - Automatically loads API keys from `.env` file if present
-
-2. **Workspace Directory Selection**
-   - Specify the directory OpenHands should access
-   - Default: current directory
-
-3. **LLM Model Selection**
-   - Choose from models defined in `models.conf`
-   - Supports both cloud and local LLMs
-
-4. **API Key Input**
-   - If API key is found in `.env`: Uses it automatically
-   - If not found: Prompts for manual input
-   - Local LLMs: Automatically sets "dummy" key
-
-5. **Container Version Selection**
-   - Default: 0.39
-
-These scripts will prompt you for the necessary configuration if environment variables are not already set.
-
-### Manual Setup
-
-You can skip the interactive prompts by setting environment variables beforehand:
-
-#### Linux/macOS
-```bash
-# Directory you want OpenHands to access
+export CONTAINER_VERSION="0.8.2"  # または適切なバージョン
+export WORKSPACE_DIR="your-workspace-name"
+export LLM_API_KEY="your-api-key"
+export LLM_MODEL="your-model"
+export LLM_BASE_URL="your-base-url"  # 必要に応じて
 export SANDBOX_VOLUMES="/path/to/your/workspace"
-
-# Your user ID (to ensure correct file permissions)
-export SANDBOX_USER_ID=$(id -u)
-
-# LLM configuration
-export LLM_MODEL="anthropic/claude-3-5-sonnet-20241022"  # Or your preferred model
-export LLM_API_KEY="your_api_key_here"
-export LLM_BASE_URL="http://localhost:8000"  # Only for local LLMs
-export CONTAINER_VERSION="0.39"
-
-./run-openhands-cli.sh
 ```
 
-#### [This does not work. Use WSL2] Windows (PowerShell)
-```powershell
-# Directory you want OpenHands to access
-$env:SANDBOX_VOLUMES="C:\path\to\your\workspace"
-
-# User ID (use 1000 as default for Windows)
-$env:SANDBOX_USER_ID=1000
-
-# LLM configuration
-$env:LLM_MODEL="anthropic/claude-3-5-sonnet-20241022"  # Or your preferred model
-$env:LLM_API_KEY="your_api_key_here"
-$env:LLM_BASE_URL="http://localhost:8000"  # Only for local LLMs
-$env:CONTAINER_VERSION="0.39"
-
-.\run-openhands-cli.ps1
-```
-
-Alternatively, run OpenHands CLI directly using Docker Compose:
+### 2. 実行
 
 ```bash
-docker compose up
+docker-compose up
 ```
 
-## Model Configuration
+### 3. WORKSPACE_DIRの指定方法
 
-### models.conf Format
+WORKSPACE_DIRは以下の優先順位で決定されます：
 
-The `models.conf` file defines available LLM models in the following format:
+1. **引数として指定**（最優先）
+2. **環境変数として指定**
+3. **未指定**（すべてのopenhands-runtime-で始まるコンテナを検索）
 
+Docker Composeでは、環境変数`${WORKSPACE_DIR}`が引数として`post-command.sh`に渡されます。
+
+### 4. 実行後の動作
+
+OpenHands CLIが終了すると、以下の処理が実行されます：
+
+1. **コンテナ情報の表示**:
+   - WORKSPACE_DIRの取得方法（引数/環境変数）
+   - コンテナの検索結果
+   - 見つかったコンテナの基本情報（名前、ステータス、ポート、イメージ）
+   - 詳細情報（コンテナID、作成日時、ステータス、IPアドレス）
+
+2. **削除確認**:
+   - コンテナが見つかった場合、削除するかユーザーに確認
+   - デフォルトは「Y」（削除する）
+   - 「Y」を選択した場合：コンテナとセッションディレクトリを削除
+   - 「n」を選択した場合：削除をキャンセルし、操作コマンドを表示
+
+### 5. 表示される情報
+
+#### コンテナが見つかった場合
 ```
-MODEL_NAME|DISPLAY_NAME|BASE_URL|API_KEY_ENV|DESCRIPTION
+=== OpenHands CLI実行完了 ===
+
+WORKSPACE_DIR（引数から取得）: your-workspace-name
+
+=== コンテナ情報の検索 ===
+検索対象: openhands-runtime-your-workspace-name
+
+✅ 見つかったコンテナ：
+NAMES                               STATUS    PORTS    IMAGE
+openhands-runtime-your-workspace    Up        8000/tcp runtime:0.8.2-nikolaik
+
+=== 詳細情報 ===
+コンテナID: abc123def456
+作成日時: 2025-06-03T14:00:00.000000000Z
+ステータス: running
+IPアドレス: 172.17.0.3
+
+=== コンテナの削除確認 ===
+見つかったコンテナ 'openhands-runtime-your-workspace-name' を削除しますか？
+削除すると以下も同時に削除されます：
+- セッションディレクトリ: /.openhands-state/sessions/your-workspace-name*
+
+削除しますか？ [Y/n]: 
 ```
 
-- `MODEL_NAME`: Model name used by OpenHands
-- `DISPLAY_NAME`: Name displayed in the selection menu
-- `BASE_URL`: Base URL for OpenAI API-compatible local LLMs (empty for standard APIs)
-- `API_KEY_ENV`: Environment variable name for the API key (empty for manual input or local LLMs)
-- `DESCRIPTION`: Model description
+#### 削除を実行した場合
+```
+=== コンテナとセッションデータを削除中 ===
+コンテナを停止中...
+コンテナを削除中...
+セッションディレクトリを削除中...
+セッションディレクトリを削除しました: /.openhands-state/sessions/your-workspace-name*
 
-### Adding New Models
+✅ 削除が完了しました
+```
 
-Edit the `models.conf` file to add new models:
+#### コンテナが見つからない場合
+```
+❌ 該当するコンテナが見つかりませんでした
+
+すべてのopenhands関連コンテナを表示します：
+NAMES                    STATUS    PORTS    IMAGE
+openhands-cli           Up        -        openhands:0.8.2
+```
+
+### 6. 削除をキャンセルした場合の操作
+
+削除確認で「n」を選択した場合、以下のコマンド例が表示されます：
 
 ```bash
-# Cloud LLM with API key from environment
-openai/gpt-4-turbo|GPT-4 Turbo||OPENAI_API_KEY|OpenAI GPT-4 Turbo
+# ログを表示
+docker logs openhands-runtime-your-workspace-name
 
-# Cloud LLM with manual API key input
-custom/model|Custom Model|||Custom model requiring manual API key
+# コンテナに接続
+docker exec -it openhands-runtime-your-workspace-name /bin/bash
 
-# Local LLM (no API key needed)
-openai/my-local-model|My Local Model|http://localhost:8000||Custom local model
+# コンテナを停止
+docker stop openhands-runtime-your-workspace-name
+
+# コンテナを削除
+docker rm openhands-runtime-your-workspace-name
 ```
 
-## Local LLM Setup
+## カスタマイズ
 
-### Using LMStudio
+`post-command.sh`スクリプトを編集することで、表示内容や動作をカスタマイズできます。
 
-1. Load a model in LMStudio and start the server (port 1234)
-2. Add the following configuration to `models.conf`:
+## 注意事項
 
-```
-lm_studio/your-model|Your Model (LMStudio)|http://host.docker.internal:1234/v1|Model via LMStudio
-```
-
-### Using SGLang/vLLM
-
-1. Start SGLang or vLLM server (port 8000)
-2. Add the following configuration to `models.conf`:
-
-```
-openai/your-model|Your Model (SGLang)|http://host.docker.internal:8000|Model via SGLang
-```
-
-For detailed local LLM setup instructions, see `local_llm_setting.md`.
-
-## Troubleshooting
-
-### Docker Permission Errors
-
-```bash
-sudo usermod -aG docker $USER
-# Logout and login required
-```
-
-### Cannot Connect to Local LLM
-
-1. Verify the local LLM server is running
-2. Check the port number is correct
-3. If `host.docker.internal` doesn't work, use the actual IP address
-
-### Model Configuration File Not Found
-
-Ensure the `models.conf` file is in the same directory as the script.
-
-### Exit OpenHands CLI
-
-Press `Ctrl+C` while OpenHands CLI is running to execute cleanup and exit.
-
-## Windows-Specific Notes
-
-- When using Windows, you may need to adjust the volume mount paths in the Docker Compose file
-- Windows paths (like `C:\Users\username\project`) need to be converted to the format Docker expects
-- The PowerShell script automatically uses the current directory, but for custom paths:
-  - Use forward slashes: `C:/Users/username/project`
-  - Or escaped backslashes: `C:\\Users\\username\\project`
-- If you encounter path-related errors, try using the WSL 2 backend for Docker Desktop
+- `WORKSPACE_DIR`が引数にも環境変数にも設定されていない場合、警告が表示され、すべてのopenhands-runtime-で始まるコンテナが検索されます
+- Docker Composeの実行には、Dockerデーモンが起動している必要があります
+- 引数として渡されたWORKSPACE_DIRは環境変数よりも優先されます
+- **削除確認のデフォルトは「Y」（削除する）です**。Enterキーを押すだけでコンテナとセッションデータが削除されます
+- セッションディレクトリの削除は`/.openhands-state/sessions/${WORKSPACE_DIR}*`パターンで実行されます
+- 削除処理は元に戻せないため、重要なデータがある場合は事前にバックアップを取ってください

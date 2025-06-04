@@ -16,8 +16,11 @@ services:
       - LLM_BASE_URL=${LLM_BASE_URL}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/bin/docker
       - ./.openhands-state:/.openhands-state
-      - ./config.toml:/app/config.toml
+      - ./config.toml:/app/config.toml:ro
+      - ./post-command.sh:/app/post-command.sh:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    command: python -m openhands.cli.main --config-file config.toml
+    command: bash -c "python -m openhands.cli.main --config-file config.toml --name ${WORKSPACE_DIR} && bash /app/post-command.sh '${WORKSPACE_DIR}'"
+    # command: bash
